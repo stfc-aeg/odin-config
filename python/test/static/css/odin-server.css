@@ -1,0 +1,27 @@
+:root {
+    --stfc-light-blue:#1E5Df8;
+    --stfc-dark-blue:#003088;
+    --stfc-orange:#ff9d1b;
+}
+body {
+    padding-top: 50px;
+    height: 100%;
+}
+
+html {
+    height: 100%;
+}
+
+.odin-server {
+    padding: 40px 15px;
+    text-align: center;
+}
+.contflex {
+    display: flex;
+    justify-content: space-around;
+}
+
+.text-center {
+    text-align: center;
+}
+
