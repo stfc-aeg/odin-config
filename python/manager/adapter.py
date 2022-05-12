@@ -186,10 +186,7 @@ class Manager():
         # Parameter tree for database
         self.param_selection_names = []
         self.param_selection = []
-        # self.valid_options = [config["Name"] for config in self.all_configs]
-        self.valid_options = {
-            layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
-        }
+        self.reset_valid_options()
         self.used_layers = []
 
         db_tree = ParameterTree({
@@ -326,9 +323,7 @@ class Manager():
 
         # No selection (i.e.: empty PUT)? Reset valid options and return
         if len(names) == 0:
-            self.valid_options = {   # reset
-                layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
-            }  # really i should have a 'reset_valid_options()' somewhere..
+            self.reset_valid_options()
             return
 
         # Order the parameter selections
@@ -336,46 +331,32 @@ class Manager():
 
         for name in names:
             num = self.named_config[name]["meta"]["layer"]
-            # Check for one option per layer
+
+            # Check that each layer has only one option in it
             if ordered_selection_dict[num]:
                 print("Select only one option per layer")
                 return  # Do nothing
-            # Set up order
+
+            # Place selection in layer
             ordered_selection_dict[num] = name
-
-        names = []  # Clear it
-        for i in range(len(ordered_selection_dict)):  # Replace it
-            names.append(ordered_selection_dict[i])
         
-        pprint(ordered_selection_dict)
-        print("~~")
-        pprint(names)
-
-        # layerCheck = [self.named_config[name]["meta"]["layer"] for name in names]
-        # if (len(names) > len(self.layered_config)) or (len(layerCheck) != len(set(layerCheck))):
-        #     # More names than layers, or more than one item from any layer
-        #     print("select only one option from each layer")
-        #     return  # do nothing
-
-        for i in range(len(names)):
-            if names[i] is None:  # If you've not chosen for that layer, skip it
+        for key, value in ordered_selection_dict.items():
+            if value is None:  # If not chosen for that layer, skip it
                 pass
             else:
-                self.param_selection_names.append(names[i])
-                self.param_selection.append(self.named_config[names[i]])
+                self.param_selection_names.append(value)
+                self.param_selection.append(self.named_config[value])
                 length = self.set_valid_options()
 
-                # If there are no valid options and you've not selected one option per layer, invalid
-                if (length == 0) and (i < len(self.layered_config)):
-                    print("these options are not compatible, try again")
+                # If no valid options and you've not yet selected one option per layer, invalid
+                # key is an integer counting from zero, referring to layers
+                if (length == 0) and (key != len(self.layered_config) -1):
+                    print("These options are incompatible, please select another combination.")
                     self.param_selection_names = []
                     self.param_selection = []
-                    self.valid_options = {   # reset
-                        layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
-                    }
+                    self.reset_valid_options()
                     return
-                else:
-                    pass
+
         # Ignoring the check for incompatible options: you just add the ordered ones, in order, to
         # param_selection_names. Then call set_valid_options
 
@@ -406,12 +387,18 @@ class Manager():
         allOptions = [  # Take all the names that appear in EVERY selection's family tree
             record for record, count in validCounter.items() if count == len(self.param_selection)
         ]
-        # Could likely do this in one step but it would be very hard to read.
         self.valid_options = {
             layer: [value["Name"] for value in values if value["Name"] in allOptions] for layer, values in self.layered_config.items()
-        }  # For every layer, look at its list of values. Put a str as the key and list all of the values in that list that appear in all the valid options
+        }  # Similar to reset_valid_options, with the condition that the names must be in allOptions.
         
         return len(self.valid_options)
+    
+    def reset_valid_options(self):
+        """Reset valid_options to the default state of every option being a valid choice."""
+        self.valid_options = {   # reset
+                layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
+        }
+        # For every layer, look at its list of values. Key = layer, value = list of all options
 
     def get_current_merge(self):
         """Function to continuously merge the current selection of options.
