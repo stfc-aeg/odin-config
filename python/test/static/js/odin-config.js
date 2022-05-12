@@ -122,18 +122,24 @@ class ManagerAdapter extends AdapterEndpoint{
         // This always needs updating when the lists are updated
         this.get('selection/current_merge')
         .then(response => {
-            // console.log(response.current_merge);
+            var current_merge = response.current_merge
 
-            var card_header_names = "";
-            this.param_selection_names.forEach(item => {
-                card_header_names += item + ", ";
+            // get the adapter-re-ordered param_selection_names
+            this.get('selection/param_selection_names')
+            .then(response => {
+                this.param_selection_names = response.param_selection_names;
+
+                var card_header_names = "";
+                this.param_selection_names.forEach(item => {
+                    card_header_names += item + ", ";
+                })
+                var card_header = "Merging: " + card_header_names.slice(0, -2);
+    
+                // update card with requested current merge and new header
+                this.update_details_card(
+                    current_merge, card_header
+                );
             })
-            var card_header = "Merging: " + card_header_names.slice(0, -2);
-
-            // update card with requested current merge and new header
-            this.update_details_card(
-                response.current_merge, card_header
-            );
         })
     }
 
@@ -190,9 +196,6 @@ class ManagerAdapter extends AdapterEndpoint{
             .then(response => {
                 this.valid_options = response.valid_options;
                 this.update_list_groups();
-                // event.target.className = "";
-                // event.target.class = ""
-                // console.log("e-t:", event.target);
             });
         });
     }

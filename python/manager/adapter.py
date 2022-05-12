@@ -313,50 +313,71 @@ class Manager():
 
         for key, item in request.items():
             self.named_config[node][key] = item
-            # self.named_config["curlMode"]["parameters"] = request
 
     def set_param_selection(self, names):
         """Set the current selection of parameters to dictate remaining valid options.
-        This process currently assumes that multiple can be entered at once instead of separately,
-        and so will be massively simplified once this is true.
-        (Checks would not be required as only valid combinations could be selected).
+        This process assumes multiple parameters will be provided at a time, as this is how
+        the PUT requests are assembled.
+        It can be assumed that inputs are safe (valid) options, but the checks are not intensive.
         # self.param_selection.append(self.named_config[name]) // self.param_selection_names.append(name) // set_valid_options()
-
-        Ideally, one name would be provided at a time, and added to the existing selection.
-        This could be handled on the controller side (submitting a request with all the selections
-        whenever one is made).
         """
         self.param_selection_names = []  # These lines also go once parameters are selected one at a time
         self.param_selection = []
 
-        # checks
+        # No selection (i.e.: empty PUT)? Reset valid options and return
         if len(names) == 0:
             self.valid_options = {   # reset
                 layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
             }  # really i should have a 'reset_valid_options()' somewhere..
-  
-        layerCheck = [self.named_config[name]["meta"]["layer"] for name in names]
-        if (len(names) > len(self.layered_config)) or (len(layerCheck) != len(set(layerCheck))):
-            # More names than layers, or more than one item from any layer
-            print("select only one option from each layer")
-            return  # do nothing
+            return
+
+        # Order the parameter selections
+        ordered_selection_dict = {i: None for i in range(len(self.layered_config))}  # {0:None,1:...}
+
+        for name in names:
+            num = self.named_config[name]["meta"]["layer"]
+            # Check for one option per layer
+            if ordered_selection_dict[num]:
+                print("Select only one option per layer")
+                return  # Do nothing
+            # Set up order
+            ordered_selection_dict[num] = name
+
+        names = []  # Clear it
+        for i in range(len(ordered_selection_dict)):  # Replace it
+            names.append(ordered_selection_dict[i])
+        
+        pprint(ordered_selection_dict)
+        print("~~")
+        pprint(names)
+
+        # layerCheck = [self.named_config[name]["meta"]["layer"] for name in names]
+        # if (len(names) > len(self.layered_config)) or (len(layerCheck) != len(set(layerCheck))):
+        #     # More names than layers, or more than one item from any layer
+        #     print("select only one option from each layer")
+        #     return  # do nothing
 
         for i in range(len(names)):
-            self.param_selection_names.append(names[i])
-            self.param_selection.append(self.named_config[names[i]])
-            length = self.set_valid_options()
-
-            if (length == 0) and (i < len(self.layered_config)):
-                # if no valid options and not reached one choice per layer, invalid selection
-                print("these options are not compatible, try again")
-                self.param_selection_names = []
-                self.param_selection = []
-                self.valid_options = {   # reset
-                    layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
-                }
-                return
-            else:
+            if names[i] is None:  # If you've not chosen for that layer, skip it
                 pass
+            else:
+                self.param_selection_names.append(names[i])
+                self.param_selection.append(self.named_config[names[i]])
+                length = self.set_valid_options()
+
+                # If there are no valid options and you've not selected one option per layer, invalid
+                if (length == 0) and (i < len(self.layered_config)):
+                    print("these options are not compatible, try again")
+                    self.param_selection_names = []
+                    self.param_selection = []
+                    self.valid_options = {   # reset
+                        layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
+                    }
+                    return
+                else:
+                    pass
+        # Ignoring the check for incompatible options: you just add the ordered ones, in order, to
+        # param_selection_names. Then call set_valid_options
 
     def set_valid_options(self):
         """Determine the remaining valid options.
@@ -428,7 +449,7 @@ class Manager():
                     key: recursive_merge(left.get(key), right.get(key))
                     for key in keys
                 }
-        
+
         paramsToMerge = []
         for i in range(len(self.layered_config)):  # layer_num
             if i in layeredParamsToMerge.keys():  # With continuous merge, may not have been chosen
