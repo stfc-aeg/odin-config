@@ -25,7 +25,7 @@ class ManagerAdapter extends AdapterEndpoint{
         // attach actions to static elements
         this.confirm_button.addEventListener("click", () => this.confirm_button_press());
         this.clear_button.addEventListener("click", () => this.clear_button_press());
-        
+
         this.get('all_names')
         .then(response => {
             this.all_names = response.all_names;
@@ -51,7 +51,7 @@ class ManagerAdapter extends AdapterEndpoint{
         this.update_details_card('Selection details will go here', 'This is the details card');
 
         for (let i=0; i < this.layer_num; i++) {
-            
+
             var string_i = i.toString();
             var layer_group_col = document.createElement("div");
             layer_group_col.className = "col p-0 h-100 text-center";  // h-100 = scroll
@@ -79,7 +79,7 @@ class ManagerAdapter extends AdapterEndpoint{
                 btn.value = name;
                 btn.id = name  // id is just the name for convenience' sake.
                 btn.disabled = true;  // buttons initially disabled for refreshing purposes.
-                
+
                 btn.addEventListener("click", (event) => this.layer_group_button_press(event));
                 ul.appendChild(btn);
             });
@@ -134,7 +134,7 @@ class ManagerAdapter extends AdapterEndpoint{
                     card_header_names += item + ", ";
                 })
                 var card_header = "Merging: " + card_header_names.slice(0, -2);
-    
+
                 // update card with requested current merge and new header
                 this.update_details_card(
                     current_merge, card_header
@@ -204,14 +204,14 @@ class ManagerAdapter extends AdapterEndpoint{
         // not really clear exactly what this button will do yet.
         console.log("yep, confirmed, looks good to me.");
     }
-    
+
     clear_button_press(){
         this.param_selection_names = []
         this.put(this.param_selection_names, 'selection/param_selection_names');
 
         this.get('selection/valid_options')
         .then(response => {
-            this.valid_options = response.valid_options; 
+            this.valid_options = response.valid_options;
             this.create_list_groups();
         });
     }

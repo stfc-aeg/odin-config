@@ -66,14 +66,14 @@ class ManagerAdapter(ApiAdapter):
 
         return ApiAdapterResponse(response, content_type=content_type,
                                   status_code=status_code)
-    
+
     @request_types('application/json')
     @response_types('application/json', default='application/json')
     def post(self, path, request):
         """Handle an HTTP POST request.
-        
+
         This method handles an HTTP POST request, returning a JSON response.
-        
+
         :param path: URI path of request.
         :param request: HTTP request object
         :return: an ApiAdapterResponse object containing the appropriate response.
@@ -201,14 +201,14 @@ class Manager():
         # This contains the whole entry stored under the name. Easiest way to store.
         # Unique names should be enforced in code. Relationships/aggregation/versioning need them
         #       > especially versioning, which cannot use _id since _id must be unique
-        #       > and versioning necessarily uses duplicates if versioned more than once 
+        #       > and versioning necessarily uses duplicates if versioned more than once
         config_tree_dict = {}
         change_tree_dict = {}
 
         for entry in self.all_configs:
             config_tree_dict[entry["Name"]] = (self.get_named_config(entry["Name"]), self.set_config)
             change_tree_dict[entry["Name"]] = (self.get_config_revisions(entry["Name"]), None)
-      
+
         config_tree = ParameterTree(config_tree_dict, mutable=True)
         change_tree = ParameterTree(change_tree_dict, mutable=True)
         # Considerations on how to handle the change tree.
@@ -220,7 +220,7 @@ class Manager():
         # This means that you need something to track which have been edited so far. UI-side can do
         # that. Then, you need a check for things that have been edited back to original (comparison on
         # update). Then you make the save, increment revision and get that latest one into config_revisions
-        # which i actually think is done automatically with the getter? 
+        # which i actually think is done automatically with the getter?
         # TL;DR: commit, check all edited for changes, increment and save, update config_revisions.
 
         # Store all information in a parameter tree
@@ -293,18 +293,18 @@ class Manager():
             revisions.append(result)
 
         return revisions
-    
+
     def get_named_config(self, name):
         """Return the details of a given config."""
         return self.named_config[name]
-    
+
     def set_config(self, request):
         """Set the specified config value to the replacement.
         Assumes that the access is done through all_configs/config_name.
         """
         # I expect this would be done in one go, show the user a JSON file they can edit, essentially
         # so you would just direct them to all_configs/confName and then replace the whole thing.
-        # This currently assumes you go directly to e.g.: curlMode 
+        # This currently assumes you go directly to e.g.: curlMode
 
         node = self.latest_path.split("/")[-2]  # self.path ends with /
 
@@ -339,7 +339,7 @@ class Manager():
 
             # Place selection in layer
             ordered_selection_dict[num] = name
-        
+
         for key, value in ordered_selection_dict.items():
             if value is None:  # If not chosen for that layer, skip it
                 pass
@@ -390,9 +390,9 @@ class Manager():
         self.valid_options = {
             layer: [value["Name"] for value in values if value["Name"] in allOptions] for layer, values in self.layered_config.items()
         }  # Similar to reset_valid_options, with the condition that the names must be in allOptions.
-        
+
         return len(self.valid_options)
-    
+
     def reset_valid_options(self):
         """Reset valid_options to the default state of every option being a valid choice."""
         self.valid_options = {   # reset
@@ -409,7 +409,7 @@ class Manager():
 
         if len(self.param_selection_names) == 0:
             return "Select an option to merge"  # If nothing has been selected, leave it blank
-        
+
         layeredParamsToMerge = {}
         for selection in self.param_selection_names:
             # layer: parameters for the selection from that layer
@@ -426,7 +426,7 @@ class Manager():
             """
             if not isinstance(left, dict) or not isinstance(right, dict):
                 return left if right is None else right
-    
+
             else:  # Both left and right are dictionaries
                 # A set of all the keys appearing in either dictionary is needed to iterate over
 
@@ -442,7 +442,7 @@ class Manager():
             if i in layeredParamsToMerge.keys():  # With continuous merge, may not have been chosen
                 paramsToMerge.append(layeredParamsToMerge[i])
         # This orders them even with layers not chosen.
-        
+
         config = paramsToMerge[0]
         for i in range(len(paramsToMerge) -1):  # with one choice made, len-1 = 0 so no merge.
             config = recursive_merge(config, paramsToMerge[i+1])
@@ -476,7 +476,7 @@ class Manager():
         :param path: path of parameter tree to set values for
         :param data: dictionary of new data values to set in the parameter tree
         """
-        self.latest_path = path  
+        self.latest_path = path
         # store latest path in case it's needed e.g.: setter used for more than one thing (configs)
         try:
             self.param_tree.set(path, data)
@@ -489,7 +489,7 @@ class Manager():
         There is no provision in the ParameterTree setup to have a method for adding new ones
         as there is for editing existing ones (e.g.: `value: (lambda: getter, setter)`).
 
-        This allows newly added values to then be accessed without requiring many database calls 
+        This allows newly added values to then be accessed without requiring many database calls
         (saving and retrieving), handling data locally as intended.
         POST is only used to add a new entry so the explicit handling here should be no issue.
 
@@ -497,7 +497,7 @@ class Manager():
         """
         self.latest_path = path
         new = next(iter(data.values()))  # data is like {confName: {id, name, etc.}}
-    
+
         try:
             self.param_tree.set(path, data)
 
