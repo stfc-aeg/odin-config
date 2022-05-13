@@ -27,6 +27,7 @@ class ManagerAdapter extends AdapterEndpoint{
         this.clear_button.addEventListener("click", () => this.clear_button_press());
 
         this.get('all_names')
+        // get all the items and then other important setup values from selection
         .then(response => {
             this.all_names = response.all_names;
 
@@ -36,18 +37,17 @@ class ManagerAdapter extends AdapterEndpoint{
                 this.valid_options = response.selection.valid_options;
                 this.param_selection_names = response.selection.param_selection_names;
 
-                this.create_list_groups();  // got to wait for the response!
+                this.create_list_groups();  // initialise buttons
             });
         })
     }
 
     create_list_groups(){
-        // initial implementation to get things on the page.
         // this function creates the relevant numbers of columns, list groups,
         // and populates them from the all_options value
         this.layer_group_row.innerHTML = "";  // clear row
 
-        // this should be empty
+        // ensure default card value
         this.update_details_card('Selection details will go here', 'This is the details card');
 
         for (let i=0; i < this.layer_num; i++) {
@@ -93,8 +93,8 @@ class ManagerAdapter extends AdapterEndpoint{
         this.update_list_groups();
     }
 
-    // update list groups
     update_list_groups() {
+        // enable buttons that are found in valid_options
         for (let i=0; i < this.layer_num; i++) {
             var id = "list-group-layer-" + i.toString();
             var ul = document.getElementById(id);
@@ -119,7 +119,7 @@ class ManagerAdapter extends AdapterEndpoint{
             }
         }
 
-        // This always needs updating when the lists are updated
+        // Card always needs updating when the lists are updated
         this.get('selection/current_merge')
         .then(response => {
             var current_merge = response.current_merge
@@ -206,11 +206,13 @@ class ManagerAdapter extends AdapterEndpoint{
     }
 
     clear_button_press(){
+        // clear the parameter selection, and re-initialise the list groups
         this.param_selection_names = []
         this.put(this.param_selection_names, 'selection/param_selection_names');
 
         this.get('selection/valid_options')
         .then(response => {
+            // valid_options is equal to all_options now, but valid options needs re-collecting
             this.valid_options = response.valid_options;
             this.create_list_groups();
         });
