@@ -78,7 +78,6 @@ class ManagerAdapter(ApiAdapter):
         :param request: HTTP request object
         :return: an ApiAdapterResponse object containing the appropriate response.
         """
-
         content_type = 'application/json'
         try:
             data = json_decode(request.body)
@@ -92,7 +91,7 @@ class ManagerAdapter(ApiAdapter):
             response = {'error': 'Failed to decode POST request body: {}'.format(str(e))}
             status_code = 400
 
-        # logging.debug(response)
+        logging.debug(response)
 
         return ApiAdapterResponse(response, content_type=content_type, status_code=status_code)
 
@@ -107,7 +106,6 @@ class ManagerAdapter(ApiAdapter):
         :param request: HTTP request object
         :return: an ApiAdapterResponse object containing the appropriate response
         """
-
         content_type = 'application/json'
 
         try:
@@ -150,6 +148,7 @@ class ManagerAdapter(ApiAdapter):
         It simplied calls the cleanup function of the manager instance.
         """
         self.manager.cleanup()
+
 
 class ManagerError(Exception):
     """Simple exception class to wrap lower-level exceptions."""
@@ -197,12 +196,10 @@ class Manager():
             'current_merge': (lambda: self.get_current_merge(), None)
         })
 
-        # Making a parameter tree of the configs. Need a get for the value otherwise it won't work
-        # This contains the whole entry stored under the name. Easiest way to store.
-        # Unique names should be enforced in code. Relationships/aggregation/versioning need them
-        #       > especially versioning, which cannot use _id since _id must be unique
-        #       > and versioning necessarily uses duplicates if versioned more than once
+        # Making a parameter tree of the configs. Need a get for the value otherwise it won't work.
+        # This contains all details stored under the name, which needs to be unique for versioning.
         config_tree_dict = {}
+        # Change tree stores all of the revisions for a given option.
         change_tree_dict = {}
 
         for entry in self.all_configs:
@@ -211,17 +208,6 @@ class Manager():
 
         config_tree = ParameterTree(config_tree_dict, mutable=True)
         change_tree = ParameterTree(change_tree_dict, mutable=True)
-        # Considerations on how to handle the change tree.
-        # Depends on when the revisions are actually made and saved.
-        # Should it just require a restart? That feels awkward. But what would the alternative be?
-        # Trigger: when a user commits their changes.
-        # Outcome: all_configs tree is updated already, so config_revisions needs the latest version
-        # and you save the latest version (all_configs) to the db and increment the revision.
-        # This means that you need something to track which have been edited so far. UI-side can do
-        # that. Then, you need a check for things that have been edited back to original (comparison on
-        # update). Then you make the save, increment revision and get that latest one into config_revisions
-        # which i actually think is done automatically with the getter?
-        # TL;DR: commit, check all edited for changes, increment and save, update config_revisions.
 
         # Store all information in a parameter tree
         self.param_tree = ParameterTree({
@@ -237,7 +223,12 @@ class Manager():
 
     def get_database_entries(self, db_name):
         """Get the data from mongo with the db specified in __init__.
-        In this case it's going to be 'Instrument' in 'tormongo'.
+        This accesses the database collection and performs the ancestry aggregation.
+        It then constructs the relevant local collections of the information:
+        - all configs  - sorted by name  - sorted by layer  - names sorted by layer
+
+        :param db_name: name of database collection to access.
+        :return: local collections for storage in class variables
         """
         Instrument = self.db[db_name]
         pipeline = [  # Array of aggregation steps
@@ -253,16 +244,16 @@ class Manager():
 
         for result in results:
             all.append(result)
-            # result.pop("ancestors")
-            # result.pop("descendants")  # don't want this in all the results
 
             named[result["Name"]] = result  # Dict sorted by name
 
-            if result["meta"]["layer"] not in layered.keys():  # Check if layer exists
-                layered[result["meta"]["layer"]] = []  # Create layer if it does not
-                all_names[result["meta"]["layer"]] = []
-            layered[result["meta"]["layer"]].append(result)
-            all_names[result["meta"]["layer"]].append(result["Name"])
+            result_layer = result["meta"]["layer"]
+
+            if result_layer not in layered.keys():  # Check if layer exists
+                layered[result_layer] = []  # Create layer if it does not
+                all_names[result_layer] = []
+            layered[result_layer].append(result)
+            all_names[result_layer].append(result["Name"])
         # Necessary to layer the 'all_names' for the UI to access on initialisation.
 
         ancestry = {}
@@ -273,7 +264,7 @@ class Manager():
             }
             config.pop("ancestors")
             config.pop("descendants")
-            # We have these in ancestry now and they are huge
+            # We have these in ancestry now and they take significant space
 
         return all, all_names, named, layered, ancestry
 
@@ -281,6 +272,7 @@ class Manager():
         """Get all the revisions for a given config option.
 
         :param name: name of the config option to search for
+        :return: list of all revisions of a config object
         """
         # So you need to access this via a request to the tree
         # To get the latest version of a specific config option
@@ -300,7 +292,8 @@ class Manager():
 
     def set_config(self, request):
         """Set the specified config value to the replacement.
-        Assumes that the access is done through all_configs/config_name.
+        Currently assumes that the access is done through all_configs/config_name.
+        Final implementation depends on how the edit function operates.
         """
         # I expect this would be done in one go, show the user a JSON file they can edit, essentially
         # so you would just direct them to all_configs/confName and then replace the whole thing.
@@ -312,11 +305,14 @@ class Manager():
             self.named_config[node][key] = item
 
     def set_param_selection(self, names):
-        """Set the current selection of parameters to dictate remaining valid options.
-        This process assumes multiple parameters will be provided at a time, as this is how
-        the PUT requests are assembled.
-        It can be assumed that inputs are safe (valid) options, but the checks are not intensive.
-        # self.param_selection.append(self.named_config[name]) // self.param_selection_names.append(name) // set_valid_options()
+        """Set the current parameter selection to determine the valid options.
+
+        Performs some checks to verify that the selection exists, has only one choice per layer,
+        and that the options are compatible as the valid options are determined.
+        This process assumes that multiple parameters are provided simultaneously (such as
+        in one PUT request).
+
+        :param names: the body of the PUT request. A list of parameter names.
         """
         self.param_selection_names = []  # These lines also go once parameters are selected one at a time
         self.param_selection = []
@@ -361,9 +357,13 @@ class Manager():
         # param_selection_names. Then call set_valid_options
 
     def set_valid_options(self):
-        """Determine the remaining valid options.
-        This iterates over the list of selections (however that is decided) and finds options that
-        are valid relatives of all of the selections.
+        """Determine the valid options given the current parameter selection.
+
+        This iterates over the list of selections, and finds all options that are relatives of
+        every item in the selection and not in the same layer as the selection. Or, finds options
+        in a common family tree to the selection.
+
+        :return: the length of the valid options, for the checks in set_param_selection
         """
         self.used_layers = []
         self.used_layers.append(selection["meta"]["layer"] for selection in self.param_selection)
@@ -401,12 +401,14 @@ class Manager():
         # For every layer, look at its list of values. Key = layer, value = list of all options
 
     def get_current_merge(self):
-        """Function to continuously merge the current selection of options.
-        If there is one selection, this is just that parameter's options (merged against nothing).
-        The merge will be re-done each time an option is added. This is because the order of merge
-        is important so as to always overwrite the 'left-most' option.
-        """
+        """Merge the current selection of options.
 
+        If there is one selection, this is just that parameter's options.
+        The merge will be re-done each time an option is added, because the order of merge matters
+        and options are not necessarily selected in layer-order.
+
+        :return: the full merged configuration, or a string if no selection has been made.
+        """
         if len(self.param_selection_names) == 0:
             return "Select an option to merge"  # If nothing has been selected, leave it blank
 
@@ -416,13 +418,16 @@ class Manager():
             layeredParamsToMerge[self.named_config[selection]["meta"]["layer"]] = self.named_config[selection]["parameters"]
 
         def recursive_merge(left, right):
-            """Compare each entity.
-            If one is not a dict, return right unless right is None.
-            If both are dicts: -get a set of their keys and repeat this
-                               - keys unique to either are kept. common keys replaced with right
-            'left' and 'right' refers to the layer of provided dicts (left is lower).
-            For more than two layers of config, this is called multiple times.
+            """Merge two dictionaries.
+
+            Compare the entities. If one is not a dictionary, return right unless right is None.
+            If both are dicts, get a set of their keys and repeat for each key.
+            For more than two layers of config, this will be called multiple times.
             e.g.: ((0 -> 1) -> 2) -> 3
+
+            :param left: the 'left-most' dictionary. Lower priority.
+            :param right: the 'right-most' dictionary to merge over left.
+            :return: the merged configuration of two dictionaries, with right overriding left.
             """
             if not isinstance(left, dict) or not isinstance(right, dict):
                 return left if right is None else right
