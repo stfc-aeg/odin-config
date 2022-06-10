@@ -17,11 +17,6 @@ class ManagerAdapter extends AdapterEndpoint{
         this.confirm_button = document.getElementById("confirm-button");
         this.clear_button = document.getElementById("clear-button");
 
-        // update param display for instrument tab
-        this.curious_card = document.getElementById("curious");
-        this.specific_card = document.getElementById("specific");
-        this.random_card = document.getElementById("random");
-
         // debug buttons
         this.debug_button = document.getElementById("buttons-button");
         this.debug_remove_button = document.getElementById("less-buttons-button");
