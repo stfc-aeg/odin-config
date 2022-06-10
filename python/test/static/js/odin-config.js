@@ -17,16 +17,18 @@ class ManagerAdapter extends AdapterEndpoint{
         this.confirm_button = document.getElementById("confirm-button");
         this.clear_button = document.getElementById("clear-button");
 
+        // debug buttons
         this.debug_button = document.getElementById("buttons-button");
         this.debug_remove_button = document.getElementById("less-buttons-button");
         this.debug_button.addEventListener("click", () => this.debug_add_many_buttons());
         this.debug_remove_button.addEventListener("click", () => this.debug_remove_many_buttons());
 
         // attach actions to static elements
-        this.confirm_button.addEventListener("click", () => this.confirm_button_press());
+        this.confirm_button.addEventListener("click", () => this.initiate_callback());
         this.clear_button.addEventListener("click", () => this.clear_button_press());
-        
+
         this.get('all_names')
+        // get all the items and then other important setup values from selection
         .then(response => {
             this.all_names = response.all_names;
 
@@ -36,22 +38,21 @@ class ManagerAdapter extends AdapterEndpoint{
                 this.valid_options = response.selection.valid_options;
                 this.param_selection_names = response.selection.param_selection_names;
 
-                this.create_list_groups();  // got to wait for the response!
+                this.create_list_groups();  // initialise buttons
             });
         })
     }
 
     create_list_groups(){
-        // initial implementation to get things on the page.
         // this function creates the relevant numbers of columns, list groups,
         // and populates them from the all_options value
         this.layer_group_row.innerHTML = "";  // clear row
 
-        // this should be empty
+        // ensure default card value
         this.update_details_card('Selection details will go here', 'This is the details card');
 
         for (let i=0; i < this.layer_num; i++) {
-            
+
             var string_i = i.toString();
             var layer_group_col = document.createElement("div");
             layer_group_col.className = "col p-0 h-100 text-center";  // h-100 = scroll
@@ -79,7 +80,7 @@ class ManagerAdapter extends AdapterEndpoint{
                 btn.value = name;
                 btn.id = name  // id is just the name for convenience' sake.
                 btn.disabled = true;  // buttons initially disabled for refreshing purposes.
-                
+
                 btn.addEventListener("click", (event) => this.layer_group_button_press(event));
                 ul.appendChild(btn);
             });
@@ -93,8 +94,8 @@ class ManagerAdapter extends AdapterEndpoint{
         this.update_list_groups();
     }
 
-    // update list groups
     update_list_groups() {
+        // enable buttons that are found in valid_options
         for (let i=0; i < this.layer_num; i++) {
             var id = "list-group-layer-" + i.toString();
             var ul = document.getElementById(id);
@@ -119,21 +120,27 @@ class ManagerAdapter extends AdapterEndpoint{
             }
         }
 
-        // This always needs updating when the lists are updated
-        this.get('selection/current_merge')
+        // Card always needs updating when the lists are updated
+        this.get('selection/current_config')
         .then(response => {
-            // console.log(response.current_merge);
+            var current_config = response.current_config
 
-            var card_header_names = "";
-            this.param_selection_names.forEach(item => {
-                card_header_names += item + ", ";
+            // get the adapter-re-ordered param_selection_names
+            this.get('selection/param_selection_names')
+            .then(response => {
+                this.param_selection_names = response.param_selection_names;
+
+                var card_header_names = "";
+                this.param_selection_names.forEach(item => {
+                    card_header_names += item + ", ";
+                })
+                var card_header = "Merging: " + card_header_names.slice(0, -2);
+
+                // update card with requested current config and new header
+                this.update_details_card(
+                    current_config, card_header
+                );
             })
-            var card_header = "Merging: " + card_header_names.slice(0, -2);
-
-            // update card with requested current merge and new header
-            this.update_details_card(
-                response.current_merge, card_header
-            );
         })
     }
 
@@ -190,25 +197,24 @@ class ManagerAdapter extends AdapterEndpoint{
             .then(response => {
                 this.valid_options = response.valid_options;
                 this.update_list_groups();
-                // event.target.className = "";
-                // event.target.class = ""
-                // console.log("e-t:", event.target);
             });
         });
     }
 
-    confirm_button_press(){
-        // not really clear exactly what this button will do yet.
-        console.log("yep, confirmed, looks good to me.");
+    initiate_callback(){
+        console.log("Initiating instrument config-request callbacks.");
+        this.put('', 'get_config');
     }
-    
+
     clear_button_press(){
+        // clear the parameter selection, and re-initialise the list groups
         this.param_selection_names = []
         this.put(this.param_selection_names, 'selection/param_selection_names');
 
         this.get('selection/valid_options')
         .then(response => {
-            this.valid_options = response.valid_options; 
+            // valid_options is equal to all_options now, but valid options needs re-collecting
+            this.valid_options = response.valid_options;
             this.create_list_groups();
         });
     }

@@ -12,90 +12,122 @@
 
 <body>
 
-<!-- dropdown row -->
-<div class="row">
-  <div class="col-sm-9 text-center">
-  <!-- d-flex justify-content-center? -->
-    <br>
-    <div class="dropdown dropdown-menu-end ">
-    <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
-      Instrument selection dropdown menu
-    </button>
-    <ul class="dropdown-menu">
-      <li><a class="dropdown-item" href="#">One instrument</a></li>
-      <li><a class="dropdown-item" href="#">Another one</a></li>
-      <li><a class="dropdown-item" href="#">Yeah that's right another one</a></li>
-    </ul>
-  </div>
-  <br> <br> <!-- these <br>s will need to go too -->
-    
-  </div>
-  <div class="col-sm-3 border"></div>
-</div>
-<!-- end dropdown row -->
 
-<!-- layers and related buttons -->
-<div style="height: 500px">
-<div class="container-fluid p-5 h-100 d-flex flex-column">
-  <div class="row h-100">
-    <div class="col-sm-10 h-100">
-      <div class="row h-100" id="layer-group-row">
-        <!-- layer list-groups go here-->
+  <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" aria-selected="true" data-bs-toggle="tab" role="tab" aria-controls="config" data-bs-target="#config">
+            Config
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="instrument-tab-button" aria-selected="false" data-bs-toggle="tab" role="tab" aria-controls="instrument" data-bs-target="#instrument">
+            Instrument
+        </button>
+    </li>
+</ul>
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="config" role="tabpanel">
+      <h2 class="text-center">Config Manager</h2>
+
+      <!-- dropdown row
+      <div class="row">
+        <div class="col-sm-9 text-center">
+          <br>
+          <div class="dropdown dropdown-menu-end ">
+          <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+            Instrument selection dropdown menu
+          </button>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#">One instrument</a></li>
+            <li><a class="dropdown-item" href="#">Another one</a></li>
+            <li><a class="dropdown-item" href="#">Yeah that's right another one</a></li>
+          </ul>
+        </div>
+
+        </div>
+        <div class="col-sm-3 border"></div>
       </div>
-    </div>
+       end dropdown row -->
 
-    <!-- two buttons at the top, one at the bottom.-->
-    <div class="d-flex col align-items-center flex-column border  h-100">some buttons
-      <button type="button" id="confirm-button" class="btn btn-outline-primary" style="width: 100%">Combine Selection</button>
-      <button type="button" id="clear-button" class="btn btn-outline-dark" style="width: 100%">Clear Selection</button>
-      <button type="button" id="filter button" class="mt-auto btn btn-outline-dark" style="width: 100%">Filter</button>
-    </div>
-  
-    </div>
-  </div>
-</div>
+      <!-- layers and related buttons -->
+      <div style="height: 500px">
+      <div class="container-fluid p-5 h-100 d-flex flex-column">
+        <div class="row h-100">
+          <div class="col-sm-10 h-100">
+            <div class="row h-100" id="layer-group-row">
+              <!-- layer list-groups go here-->
+            </div>
+          </div>
 
-<!-- end of layers and related buttons -->
+          <!-- two buttons at the top, one at the bottom.-->
+          <div class="d-flex col align-items-center flex-column border  h-100">some buttons
+            <button type="button" id="confirm-button" class="btn btn-outline-primary" style="width: 100%">Apply Config</button>
+            <button type="button" id="clear-button" class="btn btn-outline-dark" style="width: 100%">Clear Selection</button>
+            <button type="button" id="filter button" class="mt-auto btn btn-outline-dark" style="width: 100%">Filter</button>
+          </div>
 
-<!-- item details and item interaction buttons -->
-<div style="height: 300px">
-<div class="container-fluid h-100 p-1">
-  <div class="row h-100">
-    <!--<div class="col-sm-1"></div>-->
-    <div class="col-sm-9 h-100">
-      <div class="row h-100" id="details-row">
-      	<div class="col-sm-1 h-100"></div>
-        <div class="col-sm-8 align-items-end h-100">
-          <div class="card h-100" id="details-card">
-            <div class="card-header" id="details-card-header"></div>
-            <pre class="card-body overflow-auto" id="details-card-body">
-            </pre>
           </div>
         </div>
-        <div class="d-grid col align-items-end h-100">
-      	  <button type="button" class="btn btn-outline-primary me-1" style="width: 100%">Edit Last Selected Option</button>
-      	  <button type="button" class="btn btn-outline-dark me-1" style="width: 100%">View Last Selected Option History</button>
+      </div>
+
+      <!-- end of layers and related buttons -->
+
+      <!-- item details and item interaction buttons -->
+      <div style="height: 300px">
+      <div class="container-fluid h-100 p-1">
+        <div class="row h-100">
+
+          <div class="col-sm-9 h-100">
+            <div class="row h-100" id="details-row">
+              <div class="col-sm-1 h-100"></div>
+              <div class="col-sm-8 align-items-end h-100">
+                <div class="card h-100" id="details-card">
+                  <div class="card-header" id="details-card-header"></div>
+                  <pre class="card-body overflow-auto" id="details-card-body">
+                  </pre>
+                </div>
+              </div>
+              <div class="d-grid col align-items-end h-100">
+                <button type="button" class="btn btn-outline-primary me-1" style="width: 100%">Edit Last Selected Option</button>
+                <button type="button" class="btn btn-outline-dark me-1" style="width: 100%">View Last Selected Option History</button>
+              </div>
+            </div>
+          </div>
+          <div class="col border">
+            go to jail (debug)
+            <button type="button" id="buttons-button" class="btn btn-outline-danger" style="width: 100%">Add Dummy Buttons</button>
+            <button type="button" id="less-buttons-button" class="btn btn-outline-danger" style="width: 100%">Remove Dummy Buttons</button>
+          </div>
         </div>
       </div>
-    </div>    
-    <div class="col border">
-      go to jail (debug)
-      <button type="button" id="buttons-button" class="btn btn-outline-danger" style="width: 100%">Add Dummy Buttons</button>
-      <button type="button" id="less-buttons-button" class="btn btn-outline-danger" style="width: 100%">Remove Dummy Buttons</button>
-    </div>
+      </div>
+      <!-- end item detail options -->
+  </div>
+
+  <div class="tab-pane fade" id="instrument" role="tabpanel">
+      <h2 class="text-center">Instrument</h2>
+
+      <div class="container-fluid h-100 p-1">
+        <div class="row h-100">
+          <div class="col h-100">
+            Parameters from tree.
+            <ul class="list-group">
+              <li class="list-group-item" id="curious">Curious: </li>
+              <li class="list-group-item" id="specific">Specific: </li>
+              <li class="list-group-item" id="random">Random: </li>
+            </ul>
+          </div>
+          <div class="col h-100">
+            <button type="button" id="send-config-test" class="btn btn-outline-danger" style="width: 100%">Instrument: Read Config</button>
+            <br><br>
+            <button type="button" id="update-display" class="btn btn-outline-danger" style="width: 100%">Instrument: Update Display</button>
+          </div>
+        </div>
+      </div>
   </div>
 </div>
-</div>
-<!-- end item detail options -->
 
-<!-- probably need something to buffer out the space at the end? or row border idk-->
 
-<!-- Or let Bootstrap automatically handle the layout -->
-<div class="row">
-  <div class="col"></div>
-  <div class="col"></div>
-  <div class="col"></div>
-</div>
 
 </body>
 
@@ -104,6 +136,8 @@
 <!-- Include all compiled plugins (below), or include individual files as needed -->
 <script src="js/bootstrap-3.3.6-dist/js/bootstrap.min.js"></script>
 <script src="js/odin-control.js"></script>
+<script src="js/dummy-instrument.js"></script>
 <script src="js/odin-config.js"></script>
+
 
 </html>

@@ -1,8 +1,8 @@
 const DEF_API_VERSION = '0.1';
 
-class AdapterEndpoint 
+class AdapterEndpoint
 {
-    constructor(adapter, api_version=DEF_API_VERSION) 
+    constructor(adapter, api_version=DEF_API_VERSION)
     {
         this.adapter = adapter;
         this.api_version = api_version;
@@ -27,11 +27,11 @@ class AdapterEndpoint
         return result;
     }
 
-    async get_url(url='') 
+    async get_url(url='')
     {
         const response = await fetch(
             url,
-            { 
+            {
                 method: 'GET',
                 headers: {'Accept': 'application/json'}
             }
@@ -45,7 +45,7 @@ class AdapterEndpoint
             }
             catch
             {
-                message = `GET request to ${url} failed with status ${response.status}`;  
+                message = `GET request to ${url} failed with status ${response.status}`;
             }
             throw new Error(message);
         }

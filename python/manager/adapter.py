@@ -43,7 +43,23 @@ class ManagerAdapter(ApiAdapter):
 
         self.manager = Manager()
 
+        self.get_current_config = self.manager.get_current_config
+        self.register_callback = self.manager.register_callback
+
         logging.debug('ManagerAdapter loaded')
+
+    def initialize(self, adapters):
+        """Re-initialise adapters simultaneously to allow inter-adapter communication.
+
+        This method is run after all adapters' __init__ have been run to allow them to interact.
+        :param adapters: list of other active adapters.
+        """
+        for name, adapter in adapters.items():
+            if name != ('system_info' or 'config_manager'):  # Neither are needed
+                # Ensure the functional class is added and not the ApiAdapter subclass.
+                # e.g.: adapter.instrument
+                self.manager.add_adapter(getattr(adapter, name))
+                logging.debug("Adapter {} added to ConfigManager list.".format(name))
 
     @response_types('application/json', default='application/json')
     def get(self, path, request):
@@ -66,19 +82,18 @@ class ManagerAdapter(ApiAdapter):
 
         return ApiAdapterResponse(response, content_type=content_type,
                                   status_code=status_code)
-    
+
     @request_types('application/json')
     @response_types('application/json', default='application/json')
     def post(self, path, request):
         """Handle an HTTP POST request.
-        
+
         This method handles an HTTP POST request, returning a JSON response.
-        
+
         :param path: URI path of request.
         :param request: HTTP request object
         :return: an ApiAdapterResponse object containing the appropriate response.
         """
-
         content_type = 'application/json'
         try:
             data = json_decode(request.body)
@@ -92,7 +107,7 @@ class ManagerAdapter(ApiAdapter):
             response = {'error': 'Failed to decode POST request body: {}'.format(str(e))}
             status_code = 400
 
-        # logging.debug(response)
+        logging.debug(response)
 
         return ApiAdapterResponse(response, content_type=content_type, status_code=status_code)
 
@@ -107,7 +122,6 @@ class ManagerAdapter(ApiAdapter):
         :param request: HTTP request object
         :return: an ApiAdapterResponse object containing the appropriate response
         """
-
         content_type = 'application/json'
 
         try:
@@ -151,6 +165,7 @@ class ManagerAdapter(ApiAdapter):
         """
         self.manager.cleanup()
 
+
 class ManagerError(Exception):
     """Simple exception class to wrap lower-level exceptions."""
 
@@ -177,6 +192,9 @@ class Manager():
         self.instrumentHistory = self.db[history_db]  # collection name for instrument revisions
         # self.revision = self.get_all_revisions(self.instrumentHistory)
 
+        self.adapters = []
+        self.callbacks = {}
+
         # Store initialisation time
         self.init_time = time.time()
 
@@ -186,10 +204,7 @@ class Manager():
         # Parameter tree for database
         self.param_selection_names = []
         self.param_selection = []
-        # self.valid_options = [config["Name"] for config in self.all_configs]
-        self.valid_options = {
-            layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
-        }
+        self.reset_valid_options()
         self.used_layers = []
 
         db_tree = ParameterTree({
@@ -197,34 +212,21 @@ class Manager():
             'layer_num': (lambda: len(self.layered_config), None),
             'param_selection_names': (lambda: self.param_selection_names, self.set_param_selection),
             'valid_options': (lambda: self.valid_options, self.set_valid_options),  # All are valid
-            'current_merge': (lambda: self.get_current_merge(), None)
+            'current_config': (lambda: self.get_current_config(), None)
         })
 
-        # Making a parameter tree of the configs. Need a get for the value otherwise it won't work
-        # This contains the whole entry stored under the name. Easiest way to store.
-        # Unique names should be enforced in code. Relationships/aggregation/versioning need them
-        #       > especially versioning, which cannot use _id since _id must be unique
-        #       > and versioning necessarily uses duplicates if versioned more than once 
+        # Making a parameter tree of the configs. Need a get for the value otherwise it won't work.
+        # This contains all details stored under the name, which needs to be unique for versioning.
         config_tree_dict = {}
+        # Change tree stores all of the revisions for a given option.
         change_tree_dict = {}
 
         for entry in self.all_configs:
             config_tree_dict[entry["Name"]] = (self.get_named_config(entry["Name"]), self.set_config)
             change_tree_dict[entry["Name"]] = (self.get_config_revisions(entry["Name"]), None)
-      
+
         config_tree = ParameterTree(config_tree_dict, mutable=True)
         change_tree = ParameterTree(change_tree_dict, mutable=True)
-        # Considerations on how to handle the change tree.
-        # Depends on when the revisions are actually made and saved.
-        # Should it just require a restart? That feels awkward. But what would the alternative be?
-        # Trigger: when a user commits their changes.
-        # Outcome: all_configs tree is updated already, so config_revisions needs the latest version
-        # and you save the latest version (all_configs) to the db and increment the revision.
-        # This means that you need something to track which have been edited so far. UI-side can do
-        # that. Then, you need a check for things that have been edited back to original (comparison on
-        # update). Then you make the save, increment revision and get that latest one into config_revisions
-        # which i actually think is done automatically with the getter? 
-        # TL;DR: commit, check all edited for changes, increment and save, update config_revisions.
 
         # Store all information in a parameter tree
         self.param_tree = ParameterTree({
@@ -235,12 +237,44 @@ class Manager():
             'all_configs': config_tree,
             'config_revisions': change_tree,
             'selection': db_tree,
-            'all_names': (self.all_names, None)
+            'all_names': (self.all_names, None),
+            'get_config': (lambda: None, self.push_callback)
         }, mutable=True)
+
+    def add_adapter(self, adapter):
+        """Add an adapter to the config manager's list of known adapters.
+
+        :param adapter: the adapter to store reference to."""
+        self.adapters.append(adapter)
+
+    def register_callback(self, adapter, callback):
+        """Register a callback with another adapter.
+
+        At present, accepts one callback per adapter, to push the config.
+
+        :param adapter: adapter to store callback for
+        :param callback: function to be called back.
+        """
+        if adapter not in self.callbacks:
+            self.callbacks[adapter] = None
+        self.callbacks[adapter] = callback  # One callback registered per adapter
+
+    def push_callback(self, data=None):
+        """Activate the callback functions for pushing data.
+
+        :param data: Unused parameter provided by PUT request to get_config. Default None."""
+        for adapter in self.adapters:
+            if adapter in self.callbacks.keys():  # If callback has been registered with adapter
+                self.callbacks[adapter]()
 
     def get_database_entries(self, db_name):
         """Get the data from mongo with the db specified in __init__.
-        In this case it's going to be 'Instrument' in 'tormongo'.
+        This accesses the database collection and performs the ancestry aggregation.
+        It then constructs the relevant local collections of the information:
+        - all configs  - sorted by name  - sorted by layer  - names sorted by layer
+
+        :param db_name: name of database collection to access.
+        :return: local collections for storage in class variables
         """
         Instrument = self.db[db_name]
         pipeline = [  # Array of aggregation steps
@@ -256,16 +290,16 @@ class Manager():
 
         for result in results:
             all.append(result)
-            # result.pop("ancestors")
-            # result.pop("descendants")  # don't want this in all the results
 
             named[result["Name"]] = result  # Dict sorted by name
 
-            if result["meta"]["layer"] not in layered.keys():  # Check if layer exists
-                layered[result["meta"]["layer"]] = []  # Create layer if it does not
-                all_names[result["meta"]["layer"]] = []
-            layered[result["meta"]["layer"]].append(result)
-            all_names[result["meta"]["layer"]].append(result["Name"])
+            result_layer = result["meta"]["layer"]
+
+            if result_layer not in layered.keys():  # Check if layer exists
+                layered[result_layer] = []  # Create layer if it does not
+                all_names[result_layer] = []
+            layered[result_layer].append(result)
+            all_names[result_layer].append(result["Name"])
         # Necessary to layer the 'all_names' for the UI to access on initialisation.
 
         ancestry = {}
@@ -276,7 +310,7 @@ class Manager():
             }
             config.pop("ancestors")
             config.pop("descendants")
-            # We have these in ancestry now and they are huge
+            # We have these in ancestry now and they take significant space
 
         return all, all_names, named, layered, ancestry
 
@@ -284,6 +318,7 @@ class Manager():
         """Get all the revisions for a given config option.
 
         :param name: name of the config option to search for
+        :return: list of all revisions of a config object
         """
         # So you need to access this via a request to the tree
         # To get the latest version of a specific config option
@@ -296,72 +331,85 @@ class Manager():
             revisions.append(result)
 
         return revisions
-    
+
     def get_named_config(self, name):
         """Return the details of a given config."""
         return self.named_config[name]
-    
+
     def set_config(self, request):
         """Set the specified config value to the replacement.
-        Assumes that the access is done through all_configs/config_name.
+        Currently assumes that the access is done through all_configs/config_name.
+        Final implementation depends on how the edit function operates.
         """
         # I expect this would be done in one go, show the user a JSON file they can edit, essentially
         # so you would just direct them to all_configs/confName and then replace the whole thing.
-        # This currently assumes you go directly to e.g.: curlMode 
+        # This currently assumes you go directly to e.g.: curlMode
 
         node = self.latest_path.split("/")[-2]  # self.path ends with /
 
         for key, item in request.items():
             self.named_config[node][key] = item
-            # self.named_config["curlMode"]["parameters"] = request
 
     def set_param_selection(self, names):
-        """Set the current selection of parameters to dictate remaining valid options.
-        This process currently assumes that multiple can be entered at once instead of separately,
-        and so will be massively simplified once this is true.
-        (Checks would not be required as only valid combinations could be selected).
-        # self.param_selection.append(self.named_config[name]) // self.param_selection_names.append(name) // set_valid_options()
+        """Set the current parameter selection to determine the valid options.
 
-        Ideally, one name would be provided at a time, and added to the existing selection.
-        This could be handled on the controller side (submitting a request with all the selections
-        whenever one is made).
+        Performs some checks to verify that the selection exists, has only one choice per layer,
+        and that the options are compatible as the valid options are determined.
+        This process assumes that multiple parameters are provided simultaneously (such as
+        in one PUT request).
+
+        :param names: the body of the PUT request. A list of parameter names.
         """
         self.param_selection_names = []  # These lines also go once parameters are selected one at a time
         self.param_selection = []
 
-        # checks
+        # No selection (i.e.: empty PUT)? Reset valid options and return
         if len(names) == 0:
-            self.valid_options = {   # reset
-                layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
-            }  # really i should have a 'reset_valid_options()' somewhere..
-  
-        layerCheck = [self.named_config[name]["meta"]["layer"] for name in names]
-        if (len(names) > len(self.layered_config)) or (len(layerCheck) != len(set(layerCheck))):
-            # More names than layers, or more than one item from any layer
-            print("select only one option from each layer")
-            return  # do nothing
+            self.reset_valid_options()
+            return
 
-        for i in range(len(names)):
-            self.param_selection_names.append(names[i])
-            self.param_selection.append(self.named_config[names[i]])
-            length = self.set_valid_options()
+        # Order the parameter selections
+        ordered_selection_dict = {i: None for i in range(len(self.layered_config))}  # {0:None,1:...}
 
-            if (length == 0) and (i < len(self.layered_config)):
-                # if no valid options and not reached one choice per layer, invalid selection
-                print("these options are not compatible, try again")
-                self.param_selection_names = []
-                self.param_selection = []
-                self.valid_options = {   # reset
-                    layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
-                }
-                return
-            else:
+        for name in names:
+            num = self.named_config[name]["meta"]["layer"]
+
+            # Check that each layer has only one option in it
+            if ordered_selection_dict[num]:
+                print("Select only one option per layer")
+                return  # Do nothing
+
+            # Place selection in layer
+            ordered_selection_dict[num] = name
+
+        for key, value in ordered_selection_dict.items():
+            if value is None:  # If not chosen for that layer, skip it
                 pass
+            else:
+                self.param_selection_names.append(value)
+                self.param_selection.append(self.named_config[value])
+                length = self.set_valid_options()
+
+                # If no valid options and you've not yet selected one option per layer, invalid
+                # key is an integer counting from zero, referring to layers
+                if (length == 0) and (key != len(self.layered_config) -1):
+                    print("These options are incompatible, please select another combination.")
+                    self.param_selection_names = []
+                    self.param_selection = []
+                    self.reset_valid_options()
+                    return
+
+        # Ignoring the check for incompatible options: you just add the ordered ones, in order, to
+        # param_selection_names. Then call set_valid_options
 
     def set_valid_options(self):
-        """Determine the remaining valid options.
-        This iterates over the list of selections (however that is decided) and finds options that
-        are valid relatives of all of the selections.
+        """Determine the valid options given the current parameter selection.
+
+        This iterates over the list of selections, and finds all options that are relatives of
+        every item in the selection and not in the same layer as the selection. Or, finds options
+        in a common family tree to the selection.
+
+        :return: the length of the valid options, for the checks in set_param_selection
         """
         self.used_layers = []
         self.used_layers.append(selection["meta"]["layer"] for selection in self.param_selection)
@@ -385,40 +433,51 @@ class Manager():
         allOptions = [  # Take all the names that appear in EVERY selection's family tree
             record for record, count in validCounter.items() if count == len(self.param_selection)
         ]
-        # Could likely do this in one step but it would be very hard to read.
         self.valid_options = {
             layer: [value["Name"] for value in values if value["Name"] in allOptions] for layer, values in self.layered_config.items()
-        }  # For every layer, look at its list of values. Put a str as the key and list all of the values in that list that appear in all the valid options
-        
+        }  # Similar to reset_valid_options, with the condition that the names must be in allOptions.
+
         return len(self.valid_options)
 
-    def get_current_merge(self):
-        """Function to continuously merge the current selection of options.
-        If there is one selection, this is just that parameter's options (merged against nothing).
-        The merge will be re-done each time an option is added. This is because the order of merge
-        is important so as to always overwrite the 'left-most' option.
-        """
+    def reset_valid_options(self):
+        """Reset valid_options to the default state of every option being a valid choice."""
+        self.valid_options = {   # reset
+                layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
+        }
+        # For every layer, look at its list of values. Key = layer, value = list of all options
 
+    def get_current_config(self):
+        """Merge the current selection of options.
+
+        If there is one selection, this is just that parameter's options.
+        The merge will be re-done each time an option is added, because the order of merge matters
+        and options are not necessarily selected in layer-order.
+
+        :return: the full merged configuration, or a string if no selection has been made.
+        """
         if len(self.param_selection_names) == 0:
-            return "Select an option to merge"  # If nothing has been selected, leave it blank
-        
+            return "Select options to merge"  # If nothing has been selected, leave it blank
+
         layeredParamsToMerge = {}
         for selection in self.param_selection_names:
             # layer: parameters for the selection from that layer
             layeredParamsToMerge[self.named_config[selection]["meta"]["layer"]] = self.named_config[selection]["parameters"]
 
         def recursive_merge(left, right):
-            """Compare each entity.
-            If one is not a dict, return right unless right is None.
-            If both are dicts: -get a set of their keys and repeat this
-                               - keys unique to either are kept. common keys replaced with right
-            'left' and 'right' refers to the layer of provided dicts (left is lower).
-            For more than two layers of config, this is called multiple times.
+            """Merge two dictionaries.
+
+            Compare the entities. If one is not a dictionary, return right unless right is None.
+            If both are dicts, get a set of their keys and repeat for each key.
+            For more than two layers of config, this will be called multiple times.
             e.g.: ((0 -> 1) -> 2) -> 3
+
+            :param left: the 'left-most' dictionary. Lower priority.
+            :param right: the 'right-most' dictionary to merge over left.
+            :return: the merged configuration of two dictionaries, with right overriding left.
             """
             if not isinstance(left, dict) or not isinstance(right, dict):
                 return left if right is None else right
-    
+
             else:  # Both left and right are dictionaries
                 # A set of all the keys appearing in either dictionary is needed to iterate over
 
@@ -428,20 +487,18 @@ class Manager():
                     key: recursive_merge(left.get(key), right.get(key))
                     for key in keys
                 }
-        
+
         paramsToMerge = []
         for i in range(len(self.layered_config)):  # layer_num
             if i in layeredParamsToMerge.keys():  # With continuous merge, may not have been chosen
                 paramsToMerge.append(layeredParamsToMerge[i])
         # This orders them even with layers not chosen.
-        
+
         config = paramsToMerge[0]
         for i in range(len(paramsToMerge) -1):  # with one choice made, len-1 = 0 so no merge.
             config = recursive_merge(config, paramsToMerge[i+1])
 
         return config
-
-## original stuff below ##############################################
 
     def get_server_uptime(self):
         """Get the uptime for the ODIN server.
@@ -468,7 +525,7 @@ class Manager():
         :param path: path of parameter tree to set values for
         :param data: dictionary of new data values to set in the parameter tree
         """
-        self.latest_path = path  
+        self.latest_path = path
         # store latest path in case it's needed e.g.: setter used for more than one thing (configs)
         try:
             self.param_tree.set(path, data)
@@ -481,7 +538,7 @@ class Manager():
         There is no provision in the ParameterTree setup to have a method for adding new ones
         as there is for editing existing ones (e.g.: `value: (lambda: getter, setter)`).
 
-        This allows newly added values to then be accessed without requiring many database calls 
+        This allows newly added values to then be accessed without requiring many database calls
         (saving and retrieving), handling data locally as intended.
         POST is only used to add a new entry so the explicit handling here should be no issue.
 
@@ -489,7 +546,7 @@ class Manager():
         """
         self.latest_path = path
         new = next(iter(data.values()))  # data is like {confName: {id, name, etc.}}
-    
+
         try:
             self.param_tree.set(path, data)
 
