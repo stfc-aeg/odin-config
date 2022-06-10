@@ -40,6 +40,15 @@ class InstrumentAdapter(ApiAdapter):
 
         logging.debug('InstrumentAdapter loaded')
 
+    def initialize(self, adapters):
+        for name, adapter in adapters.items():
+            if name == 'manager':
+
+                self.instrument.set_config_manager(adapter.manager)
+
+                adapter.manager.register_callback(adapter=self.instrument, callback=self.instrument.get_config)
+                logging.debug("Registered callback with manager adapter.")
+
     @response_types('application/json', default='application/json')
     def get(self, path, request):
         """Handle an HTTP GET request.
@@ -161,11 +170,60 @@ class Instrument():
         # Get package version information
         version_info = get_versions()
 
+        self.config_manager = None
+        self.config = None
+
+        # param variables which would be some default value?
+        self.curious_num = 0
+        self.specific_num = 0
+        self.random_num = 0
+
+        self.param_param_tree = ParameterTree({
+            'curious_num': (lambda: self.curious_num, self.set_params),
+            'specific_num': (lambda: self.specific_num, self.set_params),
+            'random_num': (lambda: self.random_num, self.set_params),
+        })
+
         self.param_tree = ParameterTree({
             'odin_version': version_info['version'],
             'tornado_version': tornado.version,
             'server_uptime': (self.get_server_uptime, None),
+            'certain_params': self.param_param_tree,
+            'request_config': (lambda: None, self.get_config),
         })
+
+    def set_config_manager(self, manager):
+        """Store the config manager adapter in a class variable."""
+        self.config_manager = manager
+
+    def get_config(self, data=None):  # data=None as this can be called from PUT commands
+        """Get the current config from the config manager."""
+        self.config = self.config_manager.get_current_config()
+        self.set_params()
+
+    def set_params(self):
+        """Set parameters in the tree based on the current config."""
+        if type(self.config) is dict:
+            # Currently using some sample data from the demo database
+            if self.key_verify(self.config, "subtree", "curious_num"):
+                self.curious_num = self.config["subtree"]["curious_num"]
+            if self.key_verify(self.config, "subtree", "specific_num"):
+                self.specific_num = self.config["subtree"]["specific_num"]
+            if self.key_verify(self.config, "subtree", "random_num"):
+                self.random_num = self.config["subtree"]["random_num"]
+        else:
+            self.curious_num, self.specific_num, self.random_num = 0,0,0  # Reset
+
+    def key_verify(self, data, *keys):
+        """Verify that a particular sequence of nested keys exists in a dictionary.
+        """
+        _data = data
+        for key in keys:
+            try:
+                _data = _data[key]
+            except KeyError:
+                return False
+        return True
 
     def get_server_uptime(self):
         """Return the current uptime for the ODIN Server."""
@@ -189,8 +247,6 @@ class Instrument():
         :param path: path of parameter tree to set values for
         :param data: dictionary of new data values to set in the parameter tree
         """
-        self.latest_path = path
-        # store latest path in case it's needed e.g.: setter used for more than one thing (configs)
         try:
             self.param_tree.set(path, data)
         except ParameterTreeError as e:
@@ -208,15 +264,8 @@ class Instrument():
 
         If the restart is demanded on adding a new one then this can just be set().
         """
-        self.latest_path = path
-        new = next(iter(data.values()))  # data is like {confName: {id, name, etc.}}
 
         try:
             self.param_tree.set(path, data)
-
-            self.named_config[new["Name"]] = new
-            self.all_configs.append(new)
-            self.layered_config[new["meta"]["layer"]].append(new)
-
         except ParameterTreeError as e:
             raise InstrumentError(e)
