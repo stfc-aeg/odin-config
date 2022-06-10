@@ -43,7 +43,23 @@ class ManagerAdapter(ApiAdapter):
 
         self.manager = Manager()
 
+        self.get_current_config = self.manager.get_current_config
+        self.register_callback = self.manager.register_callback
+
         logging.debug('ManagerAdapter loaded')
+
+    def initialize(self, adapters):
+        """Re-initialise adapters simultaneously to allow inter-adapter communication.
+
+        This method is run after all adapters' __init__ have been run to allow them to interact.
+        :param adapters: list of other active adapters.
+        """
+        for name, adapter in adapters.items():
+            if name != ('system_info' or 'config_manager'):  # Neither are needed
+                # Ensure the functional class is added and not the ApiAdapter subclass.
+                # e.g.: adapter.instrument
+                self.manager.add_adapter(getattr(adapter, name))
+                logging.debug("Adapter {} added to ConfigManager list.".format(name))
 
     @response_types('application/json', default='application/json')
     def get(self, path, request):
@@ -176,6 +192,9 @@ class Manager():
         self.instrumentHistory = self.db[history_db]  # collection name for instrument revisions
         # self.revision = self.get_all_revisions(self.instrumentHistory)
 
+        self.adapters = []
+        self.callbacks = {}
+
         # Store initialisation time
         self.init_time = time.time()
 
@@ -193,7 +212,7 @@ class Manager():
             'layer_num': (lambda: len(self.layered_config), None),
             'param_selection_names': (lambda: self.param_selection_names, self.set_param_selection),
             'valid_options': (lambda: self.valid_options, self.set_valid_options),  # All are valid
-            'current_merge': (lambda: self.get_current_merge(), None)
+            'current_config': (lambda: self.get_current_config(), None)
         })
 
         # Making a parameter tree of the configs. Need a get for the value otherwise it won't work.
@@ -218,8 +237,35 @@ class Manager():
             'all_configs': config_tree,
             'config_revisions': change_tree,
             'selection': db_tree,
-            'all_names': (self.all_names, None)
+            'all_names': (self.all_names, None),
+            'get_config': (lambda: None, self.push_callback)
         }, mutable=True)
+
+    def add_adapter(self, adapter):
+        """Add an adapter to the config manager's list of known adapters.
+
+        :param adapter: the adapter to store reference to."""
+        self.adapters.append(adapter)
+
+    def register_callback(self, adapter, callback):
+        """Register a callback with another adapter.
+
+        At present, accepts one callback per adapter, to push the config.
+
+        :param adapter: adapter to store callback for
+        :param callback: function to be called back.
+        """
+        if adapter not in self.callbacks:
+            self.callbacks[adapter] = None
+        self.callbacks[adapter] = callback  # One callback registered per adapter
+
+    def push_callback(self, data=None):
+        """Activate the callback functions for pushing data.
+
+        :param data: Unused parameter provided by PUT request to get_config. Default None."""
+        for adapter in self.adapters:
+            if adapter in self.callbacks.keys():  # If callback has been registered with adapter
+                self.callbacks[adapter]()
 
     def get_database_entries(self, db_name):
         """Get the data from mongo with the db specified in __init__.
@@ -400,7 +446,7 @@ class Manager():
         }
         # For every layer, look at its list of values. Key = layer, value = list of all options
 
-    def get_current_merge(self):
+    def get_current_config(self):
         """Merge the current selection of options.
 
         If there is one selection, this is just that parameter's options.
@@ -410,7 +456,7 @@ class Manager():
         :return: the full merged configuration, or a string if no selection has been made.
         """
         if len(self.param_selection_names) == 0:
-            return "Select an option to merge"  # If nothing has been selected, leave it blank
+            return "Select options to merge"  # If nothing has been selected, leave it blank
 
         layeredParamsToMerge = {}
         for selection in self.param_selection_names:
@@ -453,8 +499,6 @@ class Manager():
             config = recursive_merge(config, paramsToMerge[i+1])
 
         return config
-
-## original stuff below ##############################################
 
     def get_server_uptime(self):
         """Get the uptime for the ODIN server.

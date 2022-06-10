@@ -17,13 +17,14 @@ class ManagerAdapter extends AdapterEndpoint{
         this.confirm_button = document.getElementById("confirm-button");
         this.clear_button = document.getElementById("clear-button");
 
+        // debug buttons
         this.debug_button = document.getElementById("buttons-button");
         this.debug_remove_button = document.getElementById("less-buttons-button");
         this.debug_button.addEventListener("click", () => this.debug_add_many_buttons());
         this.debug_remove_button.addEventListener("click", () => this.debug_remove_many_buttons());
 
         // attach actions to static elements
-        this.confirm_button.addEventListener("click", () => this.confirm_button_press());
+        this.confirm_button.addEventListener("click", () => this.initiate_callback());
         this.clear_button.addEventListener("click", () => this.clear_button_press());
 
         this.get('all_names')
@@ -120,9 +121,9 @@ class ManagerAdapter extends AdapterEndpoint{
         }
 
         // Card always needs updating when the lists are updated
-        this.get('selection/current_merge')
+        this.get('selection/current_config')
         .then(response => {
-            var current_merge = response.current_merge
+            var current_config = response.current_config
 
             // get the adapter-re-ordered param_selection_names
             this.get('selection/param_selection_names')
@@ -135,9 +136,9 @@ class ManagerAdapter extends AdapterEndpoint{
                 })
                 var card_header = "Merging: " + card_header_names.slice(0, -2);
 
-                // update card with requested current merge and new header
+                // update card with requested current config and new header
                 this.update_details_card(
-                    current_merge, card_header
+                    current_config, card_header
                 );
             })
         })
@@ -200,9 +201,9 @@ class ManagerAdapter extends AdapterEndpoint{
         });
     }
 
-    confirm_button_press(){
-        // not really clear exactly what this button will do yet.
-        console.log("yep, confirmed, looks good to me.");
+    initiate_callback(){
+        console.log("Initiating instrument config-request callbacks.");
+        this.put('', 'get_config');
     }
 
     clear_button_press(){
