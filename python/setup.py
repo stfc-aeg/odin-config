@@ -7,10 +7,10 @@ import versioneer
 with open('requirements.txt') as f:
     required = f.read().splitlines()
 
-setup(name='manager',
+setup(name='odin_config',
       version=versioneer.get_version(),
       cmdclass=versioneer.get_cmdclass(),
-      description='ODIN Workshop',
+      description='Configuration manager for ODIN devices.',
       url='https://github.com/stfc-aeg/odin-config',
       author='Mika Shearwood',
       author_email='mika.shearwood@stfc.ac.uk',
