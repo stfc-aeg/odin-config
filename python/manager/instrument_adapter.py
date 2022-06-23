@@ -6,18 +6,13 @@ Mika Shearwood, STFC Detector Systems Software Group
 import logging
 import time
 import tornado
-import sys
-from concurrent import futures
 
-from tornado.ioloop import IOLoop, PeriodicCallback
-from tornado.concurrent import run_on_executor
 from tornado.escape import json_decode
 
 from odin.adapters.adapter import ApiAdapter, ApiAdapterResponse, request_types, response_types
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from odin._version import get_versions
 
-from pprint import pprint
 
 class InstrumentAdapter(ApiAdapter):
     """System info adapter class for the ODIN server.
@@ -42,11 +37,11 @@ class InstrumentAdapter(ApiAdapter):
 
     def initialize(self, adapters):
         for name, adapter in adapters.items():
-            if name == 'manager':
+            if name == 'config_manager':
+                self.instrument.set_config_manager(adapter.config_manager)
 
-                self.instrument.set_config_manager(adapter.manager)
-
-                adapter.manager.register_callback(adapter=self.instrument, callback=self.instrument.get_config)
+                adapter.config_manager.register_callback(adapter=self.instrument,
+                                                  callback=self.instrument.get_config)
                 logging.debug("Registered callback with manager adapter.")
 
     @response_types('application/json', default='application/json')
@@ -212,7 +207,7 @@ class Instrument():
             if self.key_verify(self.config, "subtree", "random_num"):
                 self.random_num = self.config["subtree"]["random_num"]
         else:
-            self.curious_num, self.specific_num, self.random_num = 0,0,0  # Reset
+            self.curious_num, self.specific_num, self.random_num = 0, 0, 0  # Reset
 
     def key_verify(self, data, *keys):
         """Verify that a particular sequence of nested keys exists in a dictionary.
