@@ -1,10 +1,10 @@
 api_version = '0.1';
 
-class ManagerAdapter extends AdapterEndpoint{
+class ConfigManagerAdapter extends AdapterEndpoint{
 
     constructor(api_version=DEF_API_VERSION){
 
-        super("manager", api_version);
+        super("config_manager", api_version);
 
         // Getting access to elements that require modification
         // layer group row, detail card are the two with live updates
@@ -221,5 +221,5 @@ class ManagerAdapter extends AdapterEndpoint{
 }
 
 $( document ).ready(function() {
-    manager_adapter = new ManagerAdapter();
+    config_manager_adapter = new ConfigManagerAdapter();
 });
