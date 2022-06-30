@@ -7,14 +7,7 @@ Mika Shearwood, STFC Detector Systems Software Group
 import logging
 import tornado
 import time
-import sys
-from concurrent import futures
 
-from tornado.ioloop import IOLoop, PeriodicCallback
-from tornado.concurrent import run_on_executor
-from tornado.escape import json_decode
-
-from odin.adapters.adapter import ApiAdapter, ApiAdapterResponse, request_types, response_types
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
 from odin._version import get_versions
 
@@ -22,175 +15,39 @@ import pymongo
 from pymongo import MongoClient
 from collections import Counter
 
-from pprint import pprint
 
-class ManagerAdapter(ApiAdapter):
-    """System info adapter class for the ODIN server.
-
-    This adapter provides ODIN clients with information about the server and the system that it is
-    running on.
-    """
-
-    def __init__(self, **kwargs):
-        """Initialize the ManagerAdapter object.
-
-        This constructor initializes the ManagerAdapter object.
-
-        :param kwargs: keyword arguments specifying options
-        """
-        # Intialise superclass
-        super(ManagerAdapter, self).__init__(**kwargs)
-
-        self.manager = Manager()
-
-        self.get_current_config = self.manager.get_current_config
-        self.register_callback = self.manager.register_callback
-
-        logging.debug('ManagerAdapter loaded')
-
-    def initialize(self, adapters):
-        """Re-initialise adapters simultaneously to allow inter-adapter communication.
-
-        This method is run after all adapters' __init__ have been run to allow them to interact.
-        :param adapters: list of other active adapters.
-        """
-        for name, adapter in adapters.items():
-            if name != ('system_info' or 'config_manager'):  # Neither are needed
-                # Ensure the functional class is added and not the ApiAdapter subclass.
-                # e.g.: adapter.instrument
-                self.manager.add_adapter(getattr(adapter, name))
-                logging.debug("Adapter {} added to ConfigManager list.".format(name))
-
-    @response_types('application/json', default='application/json')
-    def get(self, path, request):
-        """Handle an HTTP GET request.
-
-        This method handles an HTTP GET request, returning a JSON response.
-
-        :param path: URI path of request
-        :param request: HTTP request object
-        :return: an ApiAdapterResponse object containing the appropriate response
-        """
-        try:
-            response = self.manager.get(path)
-            status_code = 200
-        except ParameterTreeError as e:
-            response = {'error': str(e)}
-            status_code = 400
-
-        content_type = 'application/json'
-
-        return ApiAdapterResponse(response, content_type=content_type,
-                                  status_code=status_code)
-
-    @request_types('application/json')
-    @response_types('application/json', default='application/json')
-    def post(self, path, request):
-        """Handle an HTTP POST request.
-
-        This method handles an HTTP POST request, returning a JSON response.
-
-        :param path: URI path of request.
-        :param request: HTTP request object
-        :return: an ApiAdapterResponse object containing the appropriate response.
-        """
-        content_type = 'application/json'
-        try:
-            data = json_decode(request.body)
-            self.manager.post(path, data)
-            response = self.manager.get(path)
-            status_code = 200
-        except ManagerError as e:
-            response = {'error': str(e)}
-            status_code = 400
-        except (TypeError, ValueError) as e:
-            response = {'error': 'Failed to decode POST request body: {}'.format(str(e))}
-            status_code = 400
-
-        logging.debug(response)
-
-        return ApiAdapterResponse(response, content_type=content_type, status_code=status_code)
-
-    @request_types('application/json')
-    @response_types('application/json', default='application/json')
-    def put(self, path, request):
-        """Handle an HTTP PUT request.
-
-        This method handles an HTTP PUT request, returning a JSON response.
-
-        :param path: URI path of request
-        :param request: HTTP request object
-        :return: an ApiAdapterResponse object containing the appropriate response
-        """
-        content_type = 'application/json'
-
-        try:
-            data = json_decode(request.body)
-            self.manager.set(path, data)
-            response = self.manager.get(path)
-            status_code = 200
-        except ManagerError as e:
-            response = {'error': str(e)}
-            status_code = 400
-        except (TypeError, ValueError) as e:
-            response = {'error': 'Failed to decode PUT request body: {}'.format(str(e))}
-            status_code = 400
-
-        logging.debug(response)
-
-        return ApiAdapterResponse(response, content_type=content_type,
-                                  status_code=status_code)
-
-    def delete(self, path, request):
-        """Handle an HTTP DELETE request.
-
-        This method handles an HTTP DELETE request, returning a JSON response.
-
-        :param path: URI path of request
-        :param request: HTTP request object
-        :return: an ApiAdapterResponse object containing the appropriate response
-        """
-        response = 'ManagerAdapter: DELETE on path {}'.format(path)
-        status_code = 200
-
-        logging.debug(response)
-
-        return ApiAdapterResponse(response, status_code=status_code)
-
-    def cleanup(self):
-        """Clean up adapter state at shutdown.
-
-        This method cleans up the adapter state when called by the server at e.g. shutdown.
-        It simplied calls the cleanup function of the manager instance.
-        """
-        self.manager.cleanup()
-
-
-class ManagerError(Exception):
+class ConfigManagerError(Exception):
     """Simple exception class to wrap lower-level exceptions."""
 
     pass
 
 
-class Manager():
-    """Manager - class that reads MongoDB collections to store and handle information about
+class ConfigManager():
+    """ConfigManager - class that reads MongoDB collections to store and handle information about
     configuration options.
     """
 
-    def __init__(self, instrument="Instrument"):
-        """Initialise the Manager object.
+    def __init__(self, mongo_con_string, db, collection, revision_collection):
+        """Initialise the ConfigManager object.
 
-        This makes relevant database connections, accesses collections and builds mutable parameter trees.
+        This makes relevant database connections, accesses collections and builds
+        mutable parameter trees.
         """
         # Initialise DB client and vars
-        self.client = MongoClient("mongodb://localhost:27017")
-        self.db = self.client.tormongo
-        self.instrument = instrument  # collection name for instrument
-        self.all_configs, self.all_names, self.named_config, self.layered_config, self.ancestry = self.get_database_entries(self.instrument)
+        self.client = MongoClient(mongo_con_string)
+        self.db = self.client[db]
+        self.collection = collection  # collection accessed later
 
-        history_db = instrument + "History"
-        self.instrumentHistory = self.db[history_db]  # collection name for instrument revisions
-        # self.revision = self.get_all_revisions(self.instrumentHistory)
+        # Set up then populate all config entry variables
+        self.all_configs = []
+        self.all_names = {}
+        self.named_config = {}
+        self.layered_config = {}
+        self.ancestry = {}
+        self.get_database_entries()
+
+        self.historyCollection = self.db[revision_collection]  # collection name for instrument revisions
+        # self.revision = self.get_all_revisions(self.historyCollection)
 
         self.adapters = []
         self.callbacks = {}
@@ -222,8 +79,12 @@ class Manager():
         change_tree_dict = {}
 
         for entry in self.all_configs:
-            config_tree_dict[entry["Name"]] = (self.get_named_config(entry["Name"]), self.set_config)
-            change_tree_dict[entry["Name"]] = (self.get_config_revisions(entry["Name"]), None)
+            config_tree_dict[entry["Name"]] = (
+                self.get_named_config(entry["Name"]), self.set_config
+            )
+            change_tree_dict[entry["Name"]] = (
+                self.get_config_revisions(entry["Name"]), None
+            )
 
         config_tree = ParameterTree(config_tree_dict, mutable=True)
         change_tree = ParameterTree(change_tree_dict, mutable=True)
@@ -232,7 +93,7 @@ class Manager():
         self.param_tree = ParameterTree({
             'odin_version': version_info['version'],
             'tornado_version': tornado.version,
-            'db_collection': (lambda: self.instrument, None),
+            'db_collection': (lambda: self.collection, None),
             'server_uptime': (self.get_server_uptime, None),
             'all_configs': config_tree,
             'config_revisions': change_tree,
@@ -246,6 +107,7 @@ class Manager():
 
         :param adapter: the adapter to store reference to."""
         self.adapters.append(adapter)
+        logging.debug("New adapter registered with config manager: {}.".format(adapter))
 
     def register_callback(self, adapter, callback):
         """Register a callback with another adapter.
@@ -258,35 +120,54 @@ class Manager():
         if adapter not in self.callbacks:
             self.callbacks[adapter] = None
         self.callbacks[adapter] = callback  # One callback registered per adapter
+        logging.debug("Received callback with adapter: {}.".format(adapter))
 
-    def push_callback(self, data=None):
-        """Activate the callback functions for pushing data.
-
-        :param data: Unused parameter provided by PUT request to get_config. Default None."""
+    def push_callback(self, data):
+        """Activate the callback functions for pushing data."""
         for adapter in self.adapters:
-            if adapter in self.callbacks.keys():  # If callback has been registered with adapter
+            if adapter in self.callbacks.keys():
                 self.callbacks[adapter]()
 
-    def get_database_entries(self, db_name):
+    def get_database_entries(self):
         """Get the data from mongo with the db specified in __init__.
         This accesses the database collection and performs the ancestry aggregation.
         It then constructs the relevant local collections of the information:
         - all configs  - sorted by name  - sorted by layer  - names sorted by layer
-
-        :param db_name: name of database collection to access.
-        :return: local collections for storage in class variables
         """
-        Instrument = self.db[db_name]
+        Instrument = self.db[self.collection]
         pipeline = [  # Array of aggregation steps
-            {"$graphLookup": {"from": "Instrument","startWith": "$children", "connectFromField": "children","connectToField": "Name","as": "descendants"}},
-            {"$graphLookup": {"from": 'Instrument',"startWith": '$parents',"connectFromField": 'parents',"connectToField": "Name","as": 'ancestors'}},
-            {"$sort": {"layer": pymongo.ASCENDING}}
+            {
+                "$graphLookup":
+                {
+                    "from": self.collection,
+                    "startWith": "$children",
+                    "connectFromField": "children",
+                    "connectToField": "Name",
+                    "as": "descendants"
+                }
+            },
+            {
+                "$graphLookup":
+                {
+                    "from": self.collection,
+                    "startWith": '$parents',
+                    "connectFromField": 'parents',
+                    "connectToField": "Name",
+                    "as": 'ancestors'
+                }
+            },
+            {
+                "$sort":
+                {
+                    "layer": pymongo.ASCENDING
+                }
+            }
         ]
         results = Instrument.aggregate(pipeline)  # All configs with full family history
         all = []  # All configs in original form
-        named = {}  #  key:value, name:object
+        named = {}  # key:value, name:object
         layered = {}  # key:list, layer:(list of configs in layer)
-        all_names = {}  # just the names of all the configs against layers. static.
+        all_names = {}  # just the names of all the configs against layers.
 
         for result in results:
             all.append(result)
@@ -312,7 +193,11 @@ class Manager():
             config.pop("descendants")
             # We have these in ancestry now and they take significant space
 
-        return all, all_names, named, layered, ancestry
+        self.all_configs = all
+        self.all_names = all_names
+        self.named_config = named
+        self.layered_config = layered
+        self.ancestry = ancestry
 
     def get_config_revisions(self, name):
         """Get all the revisions for a given config option.
@@ -320,12 +205,10 @@ class Manager():
         :param name: name of the config option to search for
         :return: list of all revisions of a config object
         """
-        # So you need to access this via a request to the tree
-        # To get the latest version of a specific config option
-        # So, what do you query?
-        # You need to make a GET request, where this thing will make a transaction to get the info
-        # I guess you just have it be its own branch of the tree and then you never request the entire thing to avoid that tremendous inefficiency
-        results = self.instrumentHistory.find( {"Name": { "$eq": name }} )
+        # This is accessed via request to tree for all config history options
+        # If you request the entire change_tree that could get large over time.
+        # Consider this potential future inefficiency when designing 'view history'.
+        results = self.historyCollection.find({"Name": {"$eq": name}})
         revisions = []
         for result in results:
             revisions.append(result)
@@ -341,10 +224,9 @@ class Manager():
         Currently assumes that the access is done through all_configs/config_name.
         Final implementation depends on how the edit function operates.
         """
-        # I expect this would be done in one go, show the user a JSON file they can edit, essentially
+        # Expecting this to be done in one go, in essence show user an editable JSON file.
         # so you would just direct them to all_configs/confName and then replace the whole thing.
         # This currently assumes you go directly to e.g.: curlMode
-
         node = self.latest_path.split("/")[-2]  # self.path ends with /
 
         for key, item in request.items():
@@ -360,7 +242,7 @@ class Manager():
 
         :param names: the body of the PUT request. A list of parameter names.
         """
-        self.param_selection_names = []  # These lines also go once parameters are selected one at a time
+        self.param_selection_names = []  # If params selected one at a time, these lines go
         self.param_selection = []
 
         # No selection (i.e.: empty PUT)? Reset valid options and return
@@ -368,8 +250,8 @@ class Manager():
             self.reset_valid_options()
             return
 
-        # Order the parameter selections
-        ordered_selection_dict = {i: None for i in range(len(self.layered_config))}  # {0:None,1:...}
+        # Order the parameter selections: e.g.: {0:None,1:param,2:None}
+        ordered_selection_dict = {i: None for i in range(len(self.layered_config))}
 
         for name in names:
             num = self.named_config[name]["meta"]["layer"]
@@ -392,7 +274,7 @@ class Manager():
 
                 # If no valid options and you've not yet selected one option per layer, invalid
                 # key is an integer counting from zero, referring to layers
-                if (length == 0) and (key != len(self.layered_config) -1):
+                if (length == 0) and (key != len(self.layered_config) - 1):
                     print("These options are incompatible, please select another combination.")
                     self.param_selection_names = []
                     self.param_selection = []
@@ -434,15 +316,19 @@ class Manager():
             record for record, count in validCounter.items() if count == len(self.param_selection)
         ]
         self.valid_options = {
-            layer: [value["Name"] for value in values if value["Name"] in allOptions] for layer, values in self.layered_config.items()
-        }  # Similar to reset_valid_options, with the condition that the names must be in allOptions.
+            layer:
+            [value["Name"] for value in values if value["Name"] in allOptions]
+            for layer, values in self.layered_config.items()
+        }  # Similar to reset_valid_options, with the condition that the names are in allOptions.
 
         return len(self.valid_options)
 
     def reset_valid_options(self):
         """Reset valid_options to the default state of every option being a valid choice."""
         self.valid_options = {   # reset
-                layer: [value["Name"] for value in values] for layer, values in self.layered_config.items()
+                layer:
+                [value["Name"] for value in values]
+                for layer, values in self.layered_config.items()
         }
         # For every layer, look at its list of values. Key = layer, value = list of all options
 
@@ -461,7 +347,9 @@ class Manager():
         layeredParamsToMerge = {}
         for selection in self.param_selection_names:
             # layer: parameters for the selection from that layer
-            layeredParamsToMerge[self.named_config[selection]["meta"]["layer"]] = self.named_config[selection]["parameters"]
+            layeredParamsToMerge[
+                self.named_config[selection]["meta"]["layer"]
+                                ] = self.named_config[selection]["parameters"]
 
         def recursive_merge(left, right):
             """Merge two dictionaries.
@@ -495,7 +383,7 @@ class Manager():
         # This orders them even with layers not chosen.
 
         config = paramsToMerge[0]
-        for i in range(len(paramsToMerge) -1):  # with one choice made, len-1 = 0 so no merge.
+        for i in range(len(paramsToMerge) - 1):  # with one choice made, len-1 = 0 so no merge.
             config = recursive_merge(config, paramsToMerge[i+1])
 
         return config
@@ -510,7 +398,7 @@ class Manager():
     def get(self, path):
         """Get the parameter tree.
 
-        This method returns the parameter tree for use by clients via the Manager adapter.
+        This method returns the parameter tree for use by clients via the ConfigManager adapter.
 
         :param path: path to retrieve from tree
         """
@@ -520,7 +408,7 @@ class Manager():
         """Set parameters in the parameter tree.
 
         This method simply wraps underlying ParameterTree method so that an exceptions can be
-        re-raised with an appropriate ManagerError.
+        re-raised with an appropriate ConfigManagerError.
 
         :param path: path of parameter tree to set values for
         :param data: dictionary of new data values to set in the parameter tree
@@ -530,7 +418,7 @@ class Manager():
         try:
             self.param_tree.set(path, data)
         except ParameterTreeError as e:
-            raise ManagerError(e)
+            raise ConfigManagerError(e)
 
     def post(self, path, data):
         """This is the same as set above.
@@ -542,7 +430,7 @@ class Manager():
         (saving and retrieving), handling data locally as intended.
         POST is only used to add a new entry so the explicit handling here should be no issue.
 
-        If the restart is demanded on adding a new one then this can just be set().
+        If the restart is demanded on adding a new entry then only set() is needed in try block.
         """
         self.latest_path = path
         new = next(iter(data.values()))  # data is like {confName: {id, name, etc.}}
@@ -550,9 +438,10 @@ class Manager():
         try:
             self.param_tree.set(path, data)
 
+            # Add option to named_/all_/layered_config. Though, restart likely best choice.
             self.named_config[new["Name"]] = new
             self.all_configs.append(new)
             self.layered_config[new["meta"]["layer"]].append(new)
 
         except ParameterTreeError as e:
-            raise ManagerError(e)
+            raise ConfigManagerError(e)
