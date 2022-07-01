@@ -11,16 +11,17 @@ Atlas has its own connection requirements: https://www.mongodb.com/docs/guides/a
 Now you create a database and collections within it (we will need two: for the instrument config, and the history).  
 How you create these will depend on the method used.
 
-1)
-MongoDBCompass is a graphical user interface (GUI) for you to use and is very straightforward to use.  
+1. MongoDBCompass is a graphical user interface (GUI) for you to use and is very straightforward to use.  
 Connect, create a database and collection in it in the left tab, and then click 'add data' to add the data in your preferred format (list, json or table).  
 Mongosh (below) is included with this and can be used instead of the graphical interface.  
 
-2)
-Mongosh (mongo shell) is a command-line interface which can interact in the same ways through use of commands.  
-To run independently of Compass it needs to be installed separately. https://www.mongodb.com/docs/mongodb-shell/install/. Run the .exe file to launch it, or add the .exe's directory to your (system environment variables) Path to access this from any terminal.  
-After connecting, https://www.mongodb.com/docs/mongodb-shell/connect/#std-label-mdb-shell-connect, create a database (`use <database>`) and insert some data into the collection, which will automatically make both the db and the collection. (`use instrument` // `db.collectionName.insertOne(...)`).
-https://www.mongodb.com/docs/mongodb-shell/crud/insert/#std-label-mongosh-insert
+2. Mongosh (mongo shell) is a command-line interface which can interact in the same ways through use of commands.  
+To run independently of Compass it needs to be installed separately [1].  
+Run the .exe file to launch it, or add the .exe's directory to your (system environment variables) Path to access this from any terminal.  
+After connecting [2], create a database (`use <database>`) and insert some data into the collection, which will automatically make both the db and the collection. (`use instrument` // `db.collectionName.insertOne(...)`) [3].  
+[1] https://www.mongodb.com/docs/mongodb-shell/install/  
+[2] https://www.mongodb.com/docs/mongodb-shell/connect/#std-label-mdb-shell-connect  
+[3] https://www.mongodb.com/docs/mongodb-shell/crud/insert/#std-label-mongosh-insert  
 
 At the bottom of this README you can find the commands for mongosh, in order, to insert six dummy configurations (2 of layers 0, 1, 2) for the purposes of demonstration into a database called 'tormongo' and a collection called 'Instrument'.  
 These can serve as a reference for the grammar required by Mongo for this sort of data entry.  
