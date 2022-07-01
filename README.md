@@ -1,58 +1,54 @@
 # Odin Config
 
-=====================
-MONGO/USE INSTRUCTIONS
-=====================
-
 # To set up MongoDB for the application
 
-First, to use MongoDB, you will need to install it.
-https://www.mongodb.com/docs/manual/installation/
-These steps may automatically install Compass (see below). (Atlas is not recommended as this may behave differently to a local installation.)
-From there, you will have a connection string to connect to the database.
+First, to use MongoDB, you will need to install it (https://www.mongodb.com/docs/manual/installation/).  
+These steps may automatically install Compass (see below). (Atlas is not recommended as this may behave differently to a local installation.)  
+From there, you will have a connection string to connect to the database.  
 The default is the local database string (mongodb://localhost:27017).
 Atlas has its own connection requirements: https://www.mongodb.com/docs/guides/atlas/connection-string/#what-you-ll-need
 
-Now you create a database and collections within it (we will need two: for the instrument config, and the history).
+Now you create a database and collections within it (we will need two: for the instrument config, and the history).  
 How you create these will depend on the method used.
+
 1)
-MongoDBCompass is a graphical user interface (GUI) for you to use and is very straightforward to use.
-Connect, create a database and collection in it in the left tab, and then click 'add data' to add the data
-in your preferred format (list, json or table).
-Mongosh (below) is included with this and can be used instead of the graphical interface.
+MongoDBCompass is a graphical user interface (GUI) for you to use and is very straightforward to use.  
+Connect, create a database and collection in it in the left tab, and then click 'add data' to add the data in your preferred format (list, json or table).  
+Mongosh (below) is included with this and can be used instead of the graphical interface.  
+
 2)
-Mongosh (mongo shell) is a command-line interface which can interact in the same ways through use of commands.
-To run independently of Compass it needs to be installed separately. https://www.mongodb.com/docs/mongodb-shell/install/. Run the .exe file to launch it, or add the .exe's directory to your (system environment variables) Path to access this from any 
+Mongosh (mongo shell) is a command-line interface which can interact in the same ways through use of commands.  
+To run independently of Compass it needs to be installed separately. https://www.mongodb.com/docs/mongodb-shell/install/. Run the .exe file to launch it, or add the .exe's directory to your (system environment variables) Path to access this from any terminal.  
 After connecting, https://www.mongodb.com/docs/mongodb-shell/connect/#std-label-mdb-shell-connect, create a database (`use <database>`) and insert some data into the collection, which will automatically make both the db and the collection. (`use instrument` // `db.collectionName.insertOne(...)`).
 https://www.mongodb.com/docs/mongodb-shell/crud/insert/#std-label-mongosh-insert
 
+At the bottom of this README you can find the commands for mongosh, in order, to insert six dummy configurations (2 of layers 0, 1, 2) for the purposes of demonstration into a database called 'tormongo' and a collection called 'Instrument'.  
+These can serve as a reference for the grammar required by Mongo for this sort of data entry.  
+The configurations demonstrate the ability of the config manager to edit, add to, or overwrite parameters without affecting any others (see 'subtree' within).
+
 From there, it is just a case of creating and inserting the data, which may take some time (but hopefully no more time than creating the parameter files individually).
 The configuration options all need these attributes:
--
-meta/:the layer and the revision (initially zero) are mandatory. optionally: a facility, date and author.
-Name: the name of the option. the capitalisation of Name is important.
--
-parents: an array of higher-level configuration options that the current option can be applied to.
-children: an array of lower-level configuration options that the current option can have applied to it.
-(any option with another option as its parent will be a child to that option).
-parameters: a 'dictionary' of parameters. This can contain whatever parameters that option needs, including nested
-dictionaries, arrays, integers, etc.. This is the actual configuration to be applied.
 
-After this, an _id attribute is automatically generated and cannot be edited.
+**meta/**: the **layer** and the **revision** (initially zero!) are mandatory. optionally: a **facility**, **date** and **author**.  
+**Name**: the name of the option. The capitalisation of 'Name' (the key) is important.
 
-At the bottom of this README you can find the instructions for mongosh, in order, to insert six dummy configurations (2 of layers 0, 1, 2) for the purposes of demonstration into a database called 'tormongo' and a collection called 'Instrument'.
-These can serve as a reference for the grammar required by Mongo for this sort of data entry.
-The configurations demonstrate the ability of the config manager to edit, add to, or overwrite parameters without affecting any others (see 'subtree' within).
+**parents**: an array of higher-level configuration options that the current option can be applied to.  
+**children**: an array of lower-level configuration options that the current option can have applied to it.  
+(any option with another option as its parent will be a child to that option).  
+    Use the example data to see how these interact.  
+**parameters**: a 'dictionary' of parameters. This can contain whatever parameters that option needs, including nested dictionaries, arrays, integers, etc.. This is the actual configuration to be applied.
+
+After this, an \_id attribute is automatically generated and cannot be edited.
 
 # To run the application
 
 - Have set up odin-control through `git clone https://github.com/odin-detector/odin-control.git` and running `python setup.py develop` 
 
-- Clone this repository.
+- Clone this repository adjacent to odin-control.  
 - Run `python setup.py develop` from the python directory in odin-config in your terminal.
 - Adjust any of the needed configuration settings in `python/test/config/config_manager.cfg`.
     This might include adapter references (for the instrument) and db/collection names.
-- Run the app with `odin_server --config test/config/config_manager.cfg`
+- Run the app with `odin_server --config test/config/config_manager.cfg` (assuming from the `python/` directory but this is not important).  
 - Navigate to localhost:8888 to access the config manager and whatever instrument is running alongside it in your adapter.
 
 ### in python/manager/
